@@ -1,0 +1,86 @@
+# MountainEvent Plugin Configuration
+# ====================================
+
+# Minimal ketinggian untuk memasang bendera
+min-height: 292
+
+# Nama world untuk event (pastikan world ini ada di server)
+event-world: "MountCliff"
+
+# Titik spawn utama untuk event (akan diset dengan /mountaint set spawn)
+main-spawn:
+# world: "MountCliff"
+# x: 0.0
+# y: 70.0
+# z: 0.0
+# yaw: 0.0
+# pitch: 0.0
+
+# Pengaturan Random Teleport (RTP) saat event dimulai
+rtp:
+  # Ketinggian minimum untuk spawn player (Y coordinate)
+  min-y: 64
+
+  # Ketinggian maksimum untuk spawn player (Y coordinate)
+  max-y: 65
+
+  # Radius area RTP dari main-spawn (dalam blok)
+  # Contoh: 1000 = area 2000x2000 blok dari main-spawn center
+  radius: 1000
+
+# Pengaturan Batch Processing
+batch:
+  # Jumlah player yang diproses per batch
+  size: 5
+
+  # Interval antar batch (dalam ticks, 20 ticks = 1 detik)
+  interval: 2
+
+# Lokasi Pemenang (akan diset otomatis dengan command /mountaint set juara <1/2/3>)
+winners:
+# Lokasi untuk juara 1
+# juara1:
+#   world: "world"
+#   x: 0.0
+#   y: 64.0
+#   z: 0.0
+#   yaw: 0.0
+#   pitch: 0.0
+
+# Lokasi untuk juara 2
+# juara2:
+#   world: "world"
+#   x: 10.0
+#   y: 64.0
+#   z: 0.0
+#   yaw: 0.0
+#   pitch: 0.0
+
+# Lokasi untuk juara 3
+# juara3:
+#   world: "world"
+#   x: 20.0
+#   y: 64.0
+#   z: 0.0
+#   yaw: 0.0
+#   pitch: 0.0
+
+# ====================================
+# Cara penggunaan:
+# 1. Edit config sesuai kebutuhan
+# 2. Set titik spawn utama dengan /mountaint set spawn
+# 3. Set lokasi pemenang dengan /mountaint set juara 1/2/3
+# 4. Gunakan /mountaint reload untuk reload config
+# 5. Gunakan /mountaint start untuk memulai event
+#
+# Catatan Performance:
+# - Batch size kecil = loading lebih smooth tapi lambat
+# - Batch size besar = loading cepat tapi bisa lag
+# - Recommended: 5-10 player per batch
+#
+# Catatan Event:
+# - RTP akan menggunakan main-spawn sebagai titik pusat
+# - Player akan di-spawn melingkar dari main-spawn dengan radius yang ditentukan
+# - Event akan selesai otomatis setelah ada 3 pemenang
+# - Pemenang akan di-teleport ke lokasi yang sudah diset
+# ====================================

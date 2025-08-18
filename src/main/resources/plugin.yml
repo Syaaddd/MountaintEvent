@@ -2,3 +2,21 @@ name: Mountaintevent
 version: '1.0'
 main: com.mountaintevent.Mountaintevent
 api-version: '1.20'
+
+commands:
+  mountaint:
+    description: Mountain Event main command
+    usage: /mountaint <start|reload|giveflag|leaderboard|set|info>
+    aliases: [mt, mountain]
+    permission-message: "Anda tidak memiliki permission untuk menggunakan command ini!"
+
+permissions:
+  mountainevent.admin:
+    description: Permission untuk administrasi plugin
+    default: op
+  mountainevent.start:
+    description: Permission untuk memulai event
+    default: op
+  mountainevent.giveflag:
+    description: Permission untuk mendapatkan bendera
+    default: op
