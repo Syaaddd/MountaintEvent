@@ -1,5 +1,7 @@
 package com.mountaintevent;
 
+import com.destroystokyo.paper.event.player.PlayerJumpEvent;
+import net.kyori.adventure.text.Component;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.command.Command;
@@ -14,6 +16,7 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -27,17 +30,11 @@ import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
+import org.bukkit.util.Vector;
+import org.jetbrains.annotations.NotNull;
 
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.LinkedHashMap;
+import java.util.*;
 import java.util.stream.Collectors;
-import java.util.Random;
-import java.util.Iterator;
 import java.util.concurrent.CompletableFuture;
 
 @FunctionalInterface
@@ -50,11 +47,11 @@ public class Mountaintevent extends JavaPlugin implements Listener, TabCompleter
     private static int MIN_HEIGHT = 292; // Default dari config
     private NamespacedKey flagKey;
     private NamespacedKey ownerKey;
-    private Map<Location, UUID> flagOwners = new HashMap<>();
-    private Map<Location, BukkitTask> flagTimers = new HashMap<>();
-    private Map<UUID, Integer> playerWins = new HashMap<>();
+    private final Map<Location, UUID> flagOwners = new HashMap<>();
+    private final Map<Location, BukkitTask> flagTimers = new HashMap<>();
+    private final Map<UUID, Integer> playerWins = new HashMap<>();
     private boolean eventActive = false;
-    private Random random = new Random();
+    private final Random random = new Random();
 
     // Config variables
     private String eventWorldName;
@@ -73,12 +70,15 @@ public class Mountaintevent extends JavaPlugin implements Listener, TabCompleter
     private Location mainSpawnLocation;
 
     // Winner tracking
-    private List<UUID> winners = new ArrayList<>();
+    private final List<UUID> winners = new ArrayList<>();
     private boolean eventFinished = false;
 
     // No jump feature - track player Y positions
-    private Map<UUID, Double> playerLastY = new HashMap<>();
+    private final Map<UUID, Double> playerLastY = new HashMap<>();
     private boolean noJumpEnabled = true; // Default enabled
+
+    // Map to track player
+    private final List<UUID> trackPlayer = new ArrayList<>();
 
     @Override
     public void onEnable() {
@@ -172,6 +172,10 @@ public class Mountaintevent extends JavaPlugin implements Listener, TabCompleter
             float yaw = (float) getConfig().getDouble("main-spawn.yaw");
             float pitch = (float) getConfig().getDouble("main-spawn.pitch");
 
+            if (worldName == null) {
+                return;
+            }
+
             World world = Bukkit.getWorld(worldName);
             if (world != null) {
                 mainSpawnLocation = new Location(world, x, y, z, yaw, pitch);
@@ -187,6 +191,10 @@ public class Mountaintevent extends JavaPlugin implements Listener, TabCompleter
             double z = getConfig().getDouble("winners." + key + ".z");
             float yaw = (float) getConfig().getDouble("winners." + key + ".yaw");
             float pitch = (float) getConfig().getDouble("winners." + key + ".pitch");
+
+            if (worldName == null) {
+                return;
+            }
 
             World world = Bukkit.getWorld(worldName);
             if (world != null) {
@@ -232,7 +240,7 @@ public class Mountaintevent extends JavaPlugin implements Listener, TabCompleter
     }
 
     @Override
-    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+    public List<String> onTabComplete(@NotNull CommandSender sender, Command command, @NotNull String alias, String[] args) {
         List<String> completions = new ArrayList<>();
 
         if (command.getName().equalsIgnoreCase("mountaint")) {
@@ -271,7 +279,7 @@ public class Mountaintevent extends JavaPlugin implements Listener, TabCompleter
     }
 
     @Override
-    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+    public boolean onCommand(@NotNull CommandSender sender, Command command, @NotNull String label, String[] args) {
         if (command.getName().equalsIgnoreCase("mountaint")) {
             if (args.length == 0) {
                 sender.sendMessage(ChatColor.GOLD + "========== MOUNTAIN EVENT ==========");
@@ -377,12 +385,10 @@ public class Mountaintevent extends JavaPlugin implements Listener, TabCompleter
                     return true;
                 }
 
-                if (!(sender instanceof Player)) {
+                if (!(sender instanceof Player player)) {
                     sender.sendMessage(ChatColor.RED + "Command ini hanya bisa digunakan oleh player!");
                     return true;
                 }
-
-                Player player = (Player) sender;
 
                 if (!eventActive) {
                     player.sendMessage(ChatColor.RED + "Event belum dimulai!");
@@ -433,12 +439,10 @@ public class Mountaintevent extends JavaPlugin implements Listener, TabCompleter
                     return true;
                 }
 
-                if (!(sender instanceof Player)) {
+                if (!(sender instanceof Player player)) {
                     sender.sendMessage(ChatColor.RED + "Command ini hanya bisa digunakan oleh player!");
                     return true;
                 }
-
-                Player player = (Player) sender;
 
                 if (args.length < 2) {
                     sender.sendMessage(ChatColor.RED + "Usage: /mountaint set <spawn|juara>");
@@ -551,74 +555,52 @@ public class Mountaintevent extends JavaPlugin implements Listener, TabCompleter
         }
     }
 
+    @EventHandler
+    public void onPlayerJump(PlayerJumpEvent event) {
+        Player p = event.getPlayer();
+        if (!inScope(p)) return;
+
+        event.setCancelled(true);
+    }
+
     // NO JUMP EVENT HANDLER
     @EventHandler
-    public void onPlayerMove(PlayerMoveEvent event) {
-        // Only process if event is active and no-jump is enabled
-        if (!eventActive || !noJumpEnabled) {
-            return;
-        }
+    public void onPlayerMove(PlayerMoveEvent e) {
+        Player p = e.getPlayer();
+        if (!inScope(p)) return;
 
-        Player player = event.getPlayer();
-        UUID playerId = player.getUniqueId();
-        Location from = event.getFrom();
-        Location to = event.getTo();
+        Location from = e.getFrom();
+        Location to = e.getTo();
 
-        // Skip if no actual movement or if player is teleporting
-        if (to == null || (from.getBlockX() == to.getBlockX() &&
-                from.getBlockY() == to.getBlockY() &&
-                from.getBlockZ() == to.getBlockZ())) {
-            return;
-        }
+        // Hanya peduli kalau Y naik
+        if (to.getY() <= from.getY() + 1e-6) return;
 
-        // Check if player is in event world
-        if (!to.getWorld().getName().equals(eventWorldName)) {
-            return;
-        }
+        // Allow naik legit: air/ladder/vine/bubble/di atas block padat atau step naik (slab/stairs)
+        Block feet = to.getBlock();
+        Block below = to.clone().add(0, -1, 0).getBlock();
 
-        // Store/update player's last Y position
-        Double lastY = playerLastY.get(playerId);
-        if (lastY == null) {
-            playerLastY.put(playerId, to.getY());
-            return;
-        }
+        Material mFeet = feet.getType();
+        boolean climbable =
+                mFeet == Material.WATER || mFeet == Material.BUBBLE_COLUMN ||
+                        mFeet == Material.LADDER || mFeet == Material.VINE ||
+                        mFeet.name().endsWith("_STAIRS") || mFeet.name().endsWith("_SLAB");
 
-        // Detect if player is jumping (Y coordinate increased without being on a ladder, in water, etc.)
-        double yDifference = to.getY() - lastY;
+        boolean steppingUp = below.getType().isSolid(); // naik karena ada block di bawah
 
-        // If player moved up more than 0.3 blocks (normal jump threshold)
-        if (yDifference > 0.3) {
-            // Check if player is legitimately moving up (stairs, blocks, etc.)
-            Block blockBelow = to.getWorld().getBlockAt(to.getBlockX(), lastY.intValue(), to.getBlockZ());
-            Block blockAtFeet = to.getWorld().getBlockAt(to.getBlockX(), (int)to.getY(), to.getBlockZ());
-            Block blockAbove = to.getWorld().getBlockAt(to.getBlockX(), (int)to.getY() + 1, to.getBlockZ());
+        if (climbable || steppingUp) return; // biarkan
 
-            // Check if player is in water, on ladder, or climbing
-            if (blockAtFeet.getType() == Material.WATER ||
-                    blockAtFeet.getType() == Material.LADDER ||
-                    blockAtFeet.getType() == Material.VINE ||
-                    blockBelow.getType().isSolid()) {
-                // Allow legitimate vertical movement
-                playerLastY.put(playerId, to.getY());
-                return;
-            }
+        // Selain itu, hard-block kenaikan dengan clamp Y ke from (minim rubberband)
+        Location fixed = to.clone();
+        fixed.setY(from.getY());
+        e.setTo(fixed);
+    }
 
-            // This looks like a jump attempt - cancel it
-            Location correctedLocation = from.clone();
-            correctedLocation.setY(lastY);
-            event.setTo(correctedLocation);
-
-            // Optional: Send message to player (comment out if too spammy)
-            // player.sendMessage(ChatColor.RED + "Jumping tidak diizinkan selama event!");
-
-            // Optional: Apply brief slowness effect as penalty
-            player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 20, 0, false, false)); // 1 second slowness
-
-            return;
-        }
-
-        // Update player's last Y position
-        playerLastY.put(playerId, to.getY());
+    private boolean inScope(Player p) {
+        if (!noJumpEnabled) return false;
+        if (!p.getWorld().getName().equalsIgnoreCase(eventWorldName)) return false;
+        if (!p.getScoreboardTags().contains("mountainEvent")) return false;
+        if (!trackPlayer.contains(p.getUniqueId())) return false;
+        return true;
     }
 
     private void startEvent() {
@@ -675,12 +657,7 @@ public class Mountaintevent extends JavaPlugin implements Listener, TabCompleter
         List<Location> rtpLocations = new ArrayList<>();
         for (int i = 0; i < players.size(); i++) {
             Location rtpLoc = generateRandomLocationAroundSpawn(eventWorld, mainSpawnLocation);
-            if (rtpLoc != null) {
-                rtpLocations.add(rtpLoc);
-            } else {
-                // Fallback to main spawn if generation failed
-                rtpLocations.add(mainSpawnLocation.clone().add(0, 5, 0));
-            }
+            rtpLocations.add(rtpLoc);
         }
 
         // Broadcast start
@@ -702,6 +679,12 @@ public class Mountaintevent extends JavaPlugin implements Listener, TabCompleter
             batchProcess(players, batchSize, batchInterval, (player, idx) -> {
                 // Clear existing flags
                 clearPlayerFlags(player);
+
+                // Give player a scoreboardTag
+                player.addScoreboardTag("mountainEvent");
+
+                // Track player
+                trackPlayer.add(player.getUniqueId());
 
                 // Teleport player with safety check
                 Location targetLoc = rtpLocations.get(idx);
@@ -891,20 +874,11 @@ public class Mountaintevent extends JavaPlugin implements Listener, TabCompleter
         // Blocks that are safe to spawn on
         if (type.isSolid() && !type.equals(Material.LAVA) && !type.equals(Material.MAGMA_BLOCK)) {
             // Avoid dangerous blocks
-            switch (type) {
-                case CACTUS:
-                case FIRE:
-                case SOUL_FIRE:
-                case LAVA:
-                case MAGMA_BLOCK:
-                case WITHER_ROSE:
-                case SWEET_BERRY_BUSH:
-                case POINTED_DRIPSTONE:
-                case POWDER_SNOW:
-                    return false;
-                default:
-                    return true;
-            }
+            return switch (type) {
+                case CACTUS, FIRE, SOUL_FIRE, WITHER_ROSE, SWEET_BERRY_BUSH, POINTED_DRIPSTONE,
+                     POWDER_SNOW -> false;
+                default -> true;
+            };
         }
 
         return false;
@@ -914,37 +888,12 @@ public class Mountaintevent extends JavaPlugin implements Listener, TabCompleter
         Material type = block.getType();
 
         // Blocks that are safe to spawn in (air-like)
-        switch (type) {
-            case AIR:
-            case CAVE_AIR:
-            case VOID_AIR:
-            case GRASS_BLOCK:
-            case TALL_GRASS:
-            case FERN:
-            case LARGE_FERN:
-            case DEAD_BUSH:
-            case DANDELION:
-            case POPPY:
-            case BLUE_ORCHID:
-            case ALLIUM:
-            case AZURE_BLUET:
-            case RED_TULIP:
-            case ORANGE_TULIP:
-            case WHITE_TULIP:
-            case PINK_TULIP:
-            case OXEYE_DAISY:
-            case CORNFLOWER:
-            case LILY_OF_THE_VALLEY:
-            case WITHER_ROSE:
-            case SUNFLOWER:
-            case LILAC:
-            case ROSE_BUSH:
-            case PEONY:
-            case SNOW:
-                return true;
-            default:
-                return false;
-        }
+        return switch (type) {
+            case AIR, CAVE_AIR, VOID_AIR, GRASS_BLOCK, TALL_GRASS, FERN, LARGE_FERN, DEAD_BUSH, DANDELION, POPPY,
+                 BLUE_ORCHID, ALLIUM, AZURE_BLUET, RED_TULIP, ORANGE_TULIP, WHITE_TULIP, PINK_TULIP, OXEYE_DAISY,
+                 CORNFLOWER, LILY_OF_THE_VALLEY, WITHER_ROSE, SUNFLOWER, LILAC, ROSE_BUSH, PEONY, SNOW -> true;
+            default -> false;
+        };
     }
 
     private boolean isLocationInBorder(Location loc, WorldBorder border) {
@@ -971,11 +920,7 @@ public class Mountaintevent extends JavaPlugin implements Listener, TabCompleter
         }
 
         // Check if Y coordinate is valid
-        if (loc.getY() < world.getMinHeight() || loc.getY() > world.getMaxHeight()) {
-            return false;
-        }
-
-        return true;
+        return !(loc.getY() < world.getMinHeight()) && !(loc.getY() > world.getMaxHeight());
     }
 
     private Location findSafeLocationNearSpawn(World world, Location spawn, WorldBorder border) {
@@ -1122,7 +1067,7 @@ public class Mountaintevent extends JavaPlugin implements Listener, TabCompleter
             patterns.add(new Pattern(DyeColor.WHITE, PatternType.HALF_HORIZONTAL_BOTTOM));
             meta.setPatterns(patterns);
 
-            meta.setDisplayName(ChatColor.RED + "Bendera Merah Putih");
+            meta.displayName(Component.text(ChatColor.RED + "Bendera Merah Putih"));
             List<String> lore = new ArrayList<>();
             lore.add(ChatColor.YELLOW + "Pasang di ketinggian Y >= " + MIN_HEIGHT);
             lore.add(ChatColor.GOLD + "Bertahan 10 detik untuk menang!");
@@ -1184,6 +1129,9 @@ public class Mountaintevent extends JavaPlugin implements Listener, TabCompleter
         if (eventActive && !hasMountainFlag(player)) {
             Bukkit.getScheduler().runTaskLater(this, () -> {
                 if (player.isOnline() && !hasMountainFlag(player)) {
+                    // Clear
+                    player.getInventory().clear();
+
                     ItemStack flag = createFlag(player.getUniqueId());
                     player.getInventory().addItem(flag);
 
@@ -1203,6 +1151,16 @@ public class Mountaintevent extends JavaPlugin implements Listener, TabCompleter
                 }
             }, 20L);
         }
+    }
+
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        Player player = event.getPlayer();
+        UUID playerId = player.getUniqueId();
+        trackPlayer.remove(playerId);
+        playerLastY.remove(playerId);
+        player.removeScoreboardTag("mountainEvent");
+
     }
 
     @EventHandler
@@ -1278,6 +1236,7 @@ public class Mountaintevent extends JavaPlugin implements Listener, TabCompleter
                 // Player menang!
                 playerWins.put(player.getUniqueId(), playerWins.getOrDefault(player.getUniqueId(), 0) + 1);
                 winners.add(player.getUniqueId());
+                trackPlayer.remove(player.getUniqueId());
 
                 int winnerRank = winners.size();
 
@@ -1301,7 +1260,11 @@ public class Mountaintevent extends JavaPlugin implements Listener, TabCompleter
                 }
 
                 // Teleport pemenang ke lokasi juara
-                teleportWinnerToLocation(player, winnerRank);
+                player.setGameMode(GameMode.SPECTATOR);
+                player.removeScoreboardTag("mountainEvent");
+                if (trackPlayer.isEmpty()) {
+                    teleportWinnerToLocation(player, winnerRank);
+                }
 
                 flagOwners.remove(location);
                 flagTimers.remove(location);
@@ -1326,30 +1289,32 @@ public class Mountaintevent extends JavaPlugin implements Listener, TabCompleter
 
     private void teleportWinnerToLocation(Player player, int rank) {
         Location targetLocation = null;
-        String rankName = "";
-
-        switch (rank) {
-            case 1:
+        String rankName = switch (rank) {
+            case 1 -> {
                 targetLocation = juara1Location;
-                rankName = "JUARA 1";
-                break;
-            case 2:
+                yield "JUARA 1";
+            }
+            case 2 -> {
                 targetLocation = juara2Location;
-                rankName = "JUARA 2";
-                break;
-            case 3:
+                yield "JUARA 2";
+            }
+            case 3 -> {
                 targetLocation = juara3Location;
-                rankName = "JUARA 3";
-                break;
-        }
+                yield "JUARA 3";
+            }
+            default -> {
+                Bukkit.dispatchCommand(Bukkit.getConsoleSender(),
+                        "spawn " + player.getName());
+                yield "JUARA " + rank;
+            }
+        };
 
         if (targetLocation != null && player.isOnline()) {
             Location finalTargetLocation = targetLocation;
-            String finalRankName = rankName;
             Bukkit.getScheduler().runTaskLater(this, () -> {
                 player.teleport(finalTargetLocation);
                 player.sendTitle(
-                        ChatColor.GOLD + "🏆 " + finalRankName + " 🏆",
+                        ChatColor.GOLD + "🏆 " + rankName + " 🏆",
                         ChatColor.YELLOW + "Selamat atas kemenangan Anda!",
                         10, 70, 20
                 );
@@ -1381,6 +1346,7 @@ public class Mountaintevent extends JavaPlugin implements Listener, TabCompleter
 
         // Clear jump tracking
         playerLastY.clear();
+        trackPlayer.clear();
 
         // Final announcement
         Bukkit.getScheduler().runTaskLater(this, () -> {
