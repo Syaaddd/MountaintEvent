@@ -1,0 +1,4 @@
+name: Mountaintevent
+version: '1.0'
+main: com.mountaintevent.Mountaintevent
+api-version: '1.20'
