@@ -101,6 +101,11 @@ public class EventManager {
                 // Clear inventory
                 player.getInventory().clear();
 
+                // Feed and heal player
+                player.setFoodLevel(20);
+                player.setSaturation(20);
+                player.setHealth(20);
+
                 // Track player
                 UtilityMap.trackPlayer.add(player.getUniqueId());
 
@@ -497,24 +502,32 @@ public class EventManager {
                 String playerName = Bukkit.getOfflinePlayer(winnerUUID).getName();
 
                 ChatColor rankColor = ChatColor.WHITE;
-                String trophy = "";
-
-                switch (i + 1) {
-                    case 1:
+                String trophy = switch (i + 1) {
+                    case 1 -> {
                         rankColor = ChatColor.GOLD;
-                        trophy = "🥇";
-                        break;
-                    case 2:
+                        yield "🥇";
+                    }
+                    case 2 -> {
                         rankColor = ChatColor.YELLOW;
-                        trophy = "🥈";
-                        break;
-                    case 3:
+                        yield "🥈";
+                    }
+                    case 3 -> {
                         rankColor = ChatColor.GRAY;
-                        trophy = "🥉";
-                        break;
-                }
+                        yield "🥉";
+                    }
+                    default -> "";
+                };
 
                 Bukkit.broadcastMessage(rankColor + trophy + " Juara " + (i + 1) + ": " + playerName);
+            }
+
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                if (!UtilityMap.winners.contains(player.getUniqueId())) {
+                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(),
+                            "spawn " + player.getName());
+                    player.getInventory().clear();
+                    player.setGameMode(GameMode.SURVIVAL);
+                }
             }
 
             Bukkit.broadcastMessage(ChatColor.GOLD + "=====================================");
@@ -529,16 +542,6 @@ public class EventManager {
             for (Player player : Bukkit.getOnlinePlayers()) {
                 Utils.clearPlayerFlags(player);
             }
-
-            // clear all map
-            Utils.clearAllFlags();
-            UtilityMap.winners.clear();
-            UtilityMap.playerWins.clear();
-            UtilityMap.playerLastY.clear();
-            UtilityMap.trackPlayer.clear();
-            Mountaintevent.getInstance().eventFinished = false;
-            Mountaintevent.getInstance().eventActive = false;
-
 
         }, 20L);
     }

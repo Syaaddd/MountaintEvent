@@ -263,15 +263,19 @@ public class PlayerListener implements Listener {
                 // Teleport pemenang ke lokasi juara
                 player.setGameMode(GameMode.SPECTATOR);
                 player.removeScoreboardTag("mountainEvent");
-                if (UtilityMap.trackPlayer.isEmpty()) {
-                    teleportWinnerToLocation(player, winnerRank);
-                }
 
                 UtilityMap.flagOwners.remove(location);
                 UtilityMap.flagTimers.remove(location);
 
                 // Cek apakah sudah ada 3 pemenang
                 if (UtilityMap.winners.size() >= 3) {
+                    for (int i = 0; i < 3; i++) {
+                        UUID winnerUUID = UtilityMap.winners.get(i);
+                        Player winner = Bukkit.getPlayer(winnerUUID);
+                        if (winner != null && winner.isOnline()) {
+                            teleportWinnerToLocation(winner, i + 1);
+                        }
+                    }
                     eventManager.finishEvent();
                 } else {
                     // Show leaderboard sementara
